@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+
+# Resource: https://docs.docker.com/language/golang/build-images/
+# In a nutshell, a multi-stage build can carry over the artifacts from one build stage into another, and every build stage can be instantiated from a different base image.
+# Thus, in the following example, you are going to use a full-scale official Go image to build your application. Then you'll copy the application binary into another image whose base is very lean and doesn't include the Go toolchain or other optional components.
+
+
+# Build the application from source
+FROM golang:1.19 AS build-stage
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY *.go ./
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /docker-gs-ping
+
+# Run the tests in the container
+FROM build-stage AS run-test-stage
+RUN go test -v ./...
+
+# Deploy the application binary into a lean image
+# google container repository .io 
+# distroless -- "Distroless" images contain only your application and its runtime dependencies. They do not contain package managers, shells or any other programs you would expect to find in a standard Linux distribution. https://github.com/GoogleContainerTools/distroless
+# base-debian11 -- debian is a linux operating system 
+FROM gcr.io/distroless/base-debian11 AS build-release-stage
+
+WORKDIR /
+
+COPY --from=build-stage /docker-gs-ping /docker-gs-ping
+
+EXPOSE 8080
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/docker-gs-ping"]
